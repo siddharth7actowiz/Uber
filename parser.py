@@ -108,4 +108,9 @@ def prser(data:dict):
         featured_category_data.append(cat_data)
     res["Featured_Category"] =json.dumps(featured_category_data)
     res["Currency"]=base_path.get("currencyCode")
-    return res
+
+    try:
+        Restaurant(**res)
+        return res
+    except ValidationError as e:
+        print("ValidationError",e)
