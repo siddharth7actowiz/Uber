@@ -1,116 +1,131 @@
 import json
-import pprint
+from pydantic import ValidationError
+from validation import Restaurant
 
-from unicodedata import category
 
+def prser(data: dict):
+    res = {}
+    base_path = data.get("data") or {}
 
-def prser(data:dict):
-    res={}
-    base_path=data.get("data",{})
-    res["Restaurant_Name"]=base_path.get("title")
+    res["Restaurant_Name"] = base_path.get("title")
+
+    if not res["Restaurant_Name"]:
+        return None
+    res["Res_Id"]=base_path.get("uuid")
+
     res["Phone_No"] = base_path.get("phoneNumber")
-    res["Full_Address"]=base_path.get("location",{}).get("address")
-    res["Street_address"] = base_path.get("location").get("streetAddress")
-    res["City"] = base_path.get("location").get("city")
-    res["Country"] = base_path.get("location").get("country")
-    res["Region"] = base_path.get("location").get("region")
-    res["Pincode"] = base_path.get("location").get("postalCode")
-    res["ETA"] = base_path.get("etaRange",{}).get("text")
-    res["Map"] = base_path.get("indicatorIcons",[])[0].get("moreInfoSheet",{}).get("url")
-    del_path=base_path.get("supportedDiningModes",[])
-    dining=[]
-    for d in del_path:
-        dining.append(
-            {
-                "Mode":d.get("mode"),
-                "isAvailable":d.get("isAvailable")
-            }
-        )
-    res["Dining_Modes"]=json.dumps(dining)
 
+    location = base_path.get("location") or {}
 
-    cuisions_list = base_path.get("cuisineList", [])
-    res["Cuisions"] = json.dumps([cusion for cusion in cuisions_list])
-    
+    res["Full_Address"] = location.get("address")
+    res["Street_address"] = location.get("streetAddress")
+    res["City"] = location.get("city")
+    res["Country"] = location.get("country")
+    res["Region"] = location.get("region")
+    res["Pincode"] = str(location.get("postalCode"))
 
-    #paths for menu and category data
-    catalog_sections = base_path.get("catalogSectionsMap", {})
+    sections = base_path.get("sections") or []
 
-    cat_list = catalog_sections.get("0ad5db85-c10f-5ad6-897c-f8ef6bd5cc78", [])
-    #tihs will include categorey data
+    res["Timing"] = None
+    if sections and isinstance(sections[0], dict):
+        res["Timing"] = sections[0].get("subtitle")
 
-    category_data=[]
+    res["ETA"] = (base_path.get("etaRange") or {}).get("text")
 
-    for items_dict in cat_list:
-            menu_items = []
+    icons = base_path.get("indicatorIcons") or []
 
-            payload = items_dict.get("payload", {})
-            std_payload = payload.get("standardItemsPayload", {})
+    res["Map"] = None
+    if icons and isinstance(icons[0], dict):
+        res["Map"] = icons[0].get("moreInfoSheet", {}).get("url")
 
-            # Category info
-            cat_name = std_payload.get("title", {}).get("text")
-            cat_id = items_dict.get("catalogSectionUUID")
+    dining_modes = []
 
-            cat_data = {
-                "cat_id": cat_id,
-                "cat_name": cat_name
-            }
+    for d in base_path.get("supportedDiningModes") or []:
 
-            items = std_payload.get("catalogItems", [])
+        dining_modes.append({
+            "Mode": d.get("mode"),
+            "isAvailable": d.get("isAvailable")
+        })
 
-            for item in items:
-                menu_items.append({
-                    "item_name": item.get("title"),
-                    "item_id": item.get("uuid"),
-                    "url": item.get("imageUrl"),
-                    "price": item.get("priceTagline", {}).get("text"),
-                    "description": item.get("itemDescription"),
-                    "is_sold_out": item.get("isSoldOut")
-                })
+    res["Dining_Modes"] = json.dumps(dining_modes)
 
-            cat_data["Menu"] = menu_items
-            category_data.append(cat_data)
-    res["Category"]=json.dumps(category_data) #because sql can parse by itself 
+    cuisines = base_path.get("cuisineList") or []
 
-   #featured_items
+    res["Cuisions"] = json.dumps(cuisines)
 
-    featured_cat_list = base_path.get("featuredItemsSections",{}).get('0ad5db85-c10f-5ad6-897c-f8ef6bd5cc78',{})
-    featured_category_data = []
+    catalog_sections = base_path.get("catalogSectionsMap") or {}
+
+    cat_list = []
+    for v in catalog_sections.values():
+        if isinstance(v, list):
+            cat_list.extend(v)
+
+    category_data = []
 
     for items_dict in cat_list:
-        menu_items = []
+        payload = items_dict.get("payload") or {}
+        std_payload = payload.get("standardItemsPayload") or {}
 
-        payload = items_dict.get("payload", {})
-        std_payload = payload.get("standardItemsPayload", {})
-
-        # Category info
-        cat_name = std_payload.get("title", {}).get("text")
+        cat_name = (std_payload.get("title") or {}).get("text")
         cat_id = items_dict.get("catalogSectionUUID")
 
-        cat_data = {
-            "cat_id": cat_id,
-            "cat_name": cat_name
-        }
+        cat_data = {"cat_id": cat_id, "cat_name": cat_name}
+        menu_items = []
 
-        items = std_payload.get("catalogItems", [])
-
-        for item in items:
+        for item in std_payload.get("catalogItems") or []:
+            price_info = item.get("priceTagline") or {}
             menu_items.append({
                 "item_name": item.get("title"),
                 "item_id": item.get("uuid"),
                 "url": item.get("imageUrl"),
-                "price": item.get("priceTagline", {}).get("text"),
+                "price": price_info.get("text"),
+                "description": item.get("itemDescription"),
+                "is_sold_out": item.get("isSoldOut")
+            })
+
+        cat_data["Menu"] = menu_items
+        category_data.append(cat_data)
+
+    res["Category"] = json.dumps(category_data)
+
+    featured_sections = base_path.get("featuredItemsSections") or {}
+
+    featured_cat_list = []
+    for v in featured_sections.values():
+        if isinstance(v, list):
+            featured_cat_list.extend(v)
+
+    featured_category_data = []
+
+    for items_dict in featured_cat_list:
+        payload = items_dict.get("payload") or {}
+        std_payload = payload.get("standardItemsPayload") or {}
+
+        cat_name = (std_payload.get("title") or {}).get("text")
+        cat_id = items_dict.get("catalogSectionUUID")
+
+        cat_data = {"cat_id": cat_id, "cat_name": cat_name}
+        menu_items = []
+
+        for item in std_payload.get("catalogItems") or []:
+            price_info = item.get("priceTagline") or {}
+            menu_items.append({
+                "item_name": item.get("title"),
+                "item_id": item.get("uuid"),
+                "url": item.get("imageUrl"),
+                "price": price_info.get("text"),
                 "description": item.get("itemDescription"),
                 "is_sold_out": item.get("isSoldOut")
             })
 
         cat_data["Menu"] = menu_items
         featured_category_data.append(cat_data)
-    res["Featured_Category"] =json.dumps(featured_category_data)
-    res["Currency"]=base_path.get("currencyCode")
+
+    res["Featured_Category"] = json.dumps(featured_category_data)
+    res["Currency"] = base_path.get("currencyCode")
 
     try:
         Restaurant(**res)
         return res
-    except ValidationError as e:
-        print("ValidationError",e)
+    except ValidationError as v:
+        print("Error:",v)
