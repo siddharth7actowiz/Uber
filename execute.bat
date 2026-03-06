@@ -1,0 +1,13 @@
+start cmd /k python main.py 0 10000
+start cmd /k python main.py 10000 20000
+start cmd /k python main.py 20000 30000
+start cmd /k python main.py 30000 40000
+start cmd /k python main.py 40000 50000
+start cmd /k python main.py 50000 60000
+start cmd /k python main.py 60000 70000
+start cmd /k python main.py 70000 80000
+start cmd /k python main.py 80000 90000
+start cmd /k python main.py 90000 100000
+start cmd /k python main.py 100000 110000
+start cmd /k python main.py 110000 120000
+start cmd /k python main.py 120000 122888
